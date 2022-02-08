@@ -23,13 +23,13 @@ class CryptoSignTest is UnitTest
     
     let forged = CryptoSign.random_bytes(CryptoSign.mac_size())
                + "My message!"
-    try CryptoSign.open(forged, pk)?
+    try CryptoSign.open(consume forged, pk)?
       h.fail("Shouldn't verify if given a forged signed message.")
     end
     
     let lifted = signed.substring(0, (CryptoSign.mac_size().isize() - 1))
                + "Bad message"
-    try CryptoSign.open(lifted, pk)?
+    try CryptoSign.open(consume lifted, pk)?
       h.fail("Shouldn't verify if given a lifted-signature message.")
     end
     
