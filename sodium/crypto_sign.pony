@@ -1,6 +1,33 @@
 
 use "lib:sodium"
 
+use @crypto_sign_seedbytes[USize]()
+use @crypto_sign_secretkeybytes[USize]()
+use @crypto_sign_publickeybytes[USize]()
+use @crypto_sign_bytes[USize]()
+use @crypto_sign_keypair[_Int](pk: Pointer[None] iso, sk: Pointer[None] iso)
+use @crypto_sign_seed_keypair[_Int](
+      pk: Pointer[None] iso, sk: Pointer[None] iso, seed: Pointer[None] iso
+    )
+use @crypto_sign[_Int](
+      buf: Pointer[None] iso, buf_size: Pointer[USize] ref, m: Pointer[None] iso, m_size: USize, sk: Pointer[None] iso
+    )
+use @crypto_sign_open[_Int](
+      buf: Pointer[None] iso, buf_size: Pointer[USize] ref, c: Pointer[None] iso, c_size: USize, pk: Pointer[None] iso
+    )
+use @crypto_sign_detached[_Int](
+      buf: Pointer[None] iso, buf_size: Pointer[USize] ref, m: Pointer[None] iso, m_size: USize, sk: Pointer[None] iso
+    )
+use @crypto_sign_verify_detached[_Int](
+      t: Pointer[None] iso, m: Pointer[None] iso, m_size: USize, pk: Pointer[None] iso
+    )
+use @crypto_sign_ed25519_sk_to_curve25519[_Int](
+      buf: Pointer[None] iso, sk: Pointer[None] iso
+    )
+use @crypto_sign_ed25519_pk_to_curve25519[_Int](
+      buf: Pointer[None] iso, pk: Pointer[None] iso
+    )
+
 class val CryptoSignSeed
   let _inner: String
   fun string(): String => _inner
@@ -36,32 +63,32 @@ class val CryptoSignMac
     _inner = recover String.>append(consume buf) end
 
 primitive CryptoSign
-  fun tag seed_size(): USize => @crypto_sign_seedbytes[USize]().usize()
-  fun tag secret_key_size(): USize => @crypto_sign_secretkeybytes[USize]().usize()
-  fun tag public_key_size(): USize => @crypto_sign_publickeybytes[USize]().usize()
-  fun tag mac_size(): USize        => @crypto_sign_bytes[USize]().usize()
+  fun tag seed_size(): USize => @crypto_sign_seedbytes().usize()
+  fun tag secret_key_size(): USize => @crypto_sign_secretkeybytes().usize()
+  fun tag public_key_size(): USize => @crypto_sign_publickeybytes().usize()
+  fun tag mac_size(): USize        => @crypto_sign_bytes().usize()
   
   fun tag _make_buffer(size: USize): String iso^ =>
     recover String.from_cpointer(
-      @pony_alloc[Pointer[U8]](@pony_ctx[Pointer[None] iso](), size), size
+      @pony_alloc(@pony_ctx(), size), size
     ) end
   
   fun tag random_bytes(size: USize): String iso^ =>
     let buf = _make_buffer(size)
-    @randombytes_buf[None](buf.cpointer(), size)
+    @randombytes_buf(buf.cpointer(), size)
     buf
   
   fun tag keypair(): (CryptoSignSecretKey, CryptoSignPublicKey)? =>
     let sk_size = secret_key_size(); let sk = _make_buffer(sk_size)
     let pk_size = public_key_size(); let pk = _make_buffer(pk_size)
-    if 0 != @crypto_sign_keypair[_Int](pk.cpointer(), sk.cpointer()) then error end
+    if 0 != @crypto_sign_keypair(pk.cpointer(), sk.cpointer()) then error end
     (CryptoSignSecretKey(consume sk), CryptoSignPublicKey(consume pk))
   
   fun tag seed_keypair(seed: CryptoSignSeed): (CryptoSignSecretKey, CryptoSignPublicKey)? =>
     if not seed.is_valid() then error end
     let sk_size = secret_key_size(); let sk = _make_buffer(sk_size)
     let pk_size = public_key_size(); let pk = _make_buffer(pk_size)
-    if 0 != @crypto_sign_seed_keypair[_Int](
+    if 0 != @crypto_sign_seed_keypair(
       pk.cpointer(), sk.cpointer(), seed.cpointer()
     ) then error end
     (CryptoSignSecretKey(consume sk), CryptoSignPublicKey(consume pk))
@@ -70,7 +97,7 @@ primitive CryptoSign
     if not sk.is_valid() then error end
     var buf_size: USize = m.size() + mac_size()
     let buf = _make_buffer(buf_size)
-    if 0 != @crypto_sign[_Int](
+    if 0 != @crypto_sign(
       buf.cpointer(), addressof buf_size, m.cpointer(), m.size(), sk.cpointer()
     ) then error end
     consume buf
@@ -79,7 +106,7 @@ primitive CryptoSign
     if not pk.is_valid() then error end
     var buf_size: USize = c.size() - mac_size()
     let buf = _make_buffer(buf_size)
-    if 0 != @crypto_sign_open[_Int](
+    if 0 != @crypto_sign_open(
       buf.cpointer(), addressof buf_size, c.cpointer(), c.size(), pk.cpointer()
     ) then error end
     consume buf
@@ -88,14 +115,14 @@ primitive CryptoSign
     if not sk.is_valid() then error end
     var buf_size: USize = mac_size()
     let buf = _make_buffer(buf_size)
-    if 0 != @crypto_sign_detached[_Int](
+    if 0 != @crypto_sign_detached(
       buf.cpointer(), addressof buf_size, m.cpointer(), m.size(), sk.cpointer()
     ) then error end
     CryptoSignMac(consume buf)
   
   fun tag verify_detached(m: String, pk: CryptoSignPublicKey, t: CryptoSignMac)? =>
     if not (pk.is_valid() and t.is_valid()) then error end
-    if 0 != @crypto_sign_verify_detached[_Int](
+    if 0 != @crypto_sign_verify_detached(
       t.cpointer(), m.cpointer(), m.size(), pk.cpointer()
     ) then error end
   
@@ -103,7 +130,7 @@ primitive CryptoSign
     if not sk.is_valid() then error end
     let buf_size = CryptoBox.secret_key_size()
     let buf = _make_buffer(buf_size)
-    if 0 != @crypto_sign_ed25519_sk_to_curve25519[_Int](
+    if 0 != @crypto_sign_ed25519_sk_to_curve25519(
       buf.cpointer(), sk.cpointer()
     ) then error end
     CryptoBoxSecretKey(consume buf)
@@ -112,7 +139,7 @@ primitive CryptoSign
     if not pk.is_valid() then error end
     let buf_size = CryptoBox.public_key_size()
     let buf = _make_buffer(buf_size)
-    if 0 != @crypto_sign_ed25519_pk_to_curve25519[_Int](
+    if 0 != @crypto_sign_ed25519_pk_to_curve25519(
       buf.cpointer(), pk.cpointer()
     ) then error end
     CryptoBoxPublicKey(consume buf)
